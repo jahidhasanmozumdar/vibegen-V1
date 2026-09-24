@@ -1,0 +1,3 @@
+# Prisma migration checksums are byte-exact: keep SQL files LF on every OS.
+*.sql text eol=lf
+prisma/migrations/** text eol=lf

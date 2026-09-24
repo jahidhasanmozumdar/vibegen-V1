@@ -1,0 +1,107 @@
+/*
+ * Public form skin — "Premium Calm" (docs/spec/02-design-direction.md).
+ * Scoped to public forms (growth audit, contact, booking request). Inputs,
+ * selects and textareas already come from components/ui/field.tsx (48px,
+ * 12px radius, brand focus ring); this module only tunes labels, hints,
+ * the service tiles and the consent box.
+ */
+
+.form {
+  color: #0a0d14;
+  font-size: 15px;
+}
+
+/* Labels: calm weight, "Optional" as a quiet suffix */
+.form label[for] {
+  margin-bottom: 0.45rem;
+  font-size: 14px;
+  font-weight: 500;
+  color: #0a0d14;
+}
+.form label[for] > span[aria-hidden="true"] {
+  color: #b42318;
+}
+.form label[for] > span:not([aria-hidden]) {
+  margin-left: 0.4rem;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: #858c9b;
+}
+
+/* Hints and errors rendered by <Field> */
+.form [id$="-hint"] {
+  margin-top: 0.4rem;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #858c9b;
+}
+.form [id$="-error"] {
+  margin-top: 0.45rem;
+  font-size: 13px;
+  font-weight: 500;
+  color: #b42318;
+}
+
+/* Service tiles: the whole card is the checkbox label */
+.tile {
+  min-height: 4.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #e8e8ec;
+  border-radius: 14px;
+  background: #fff;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.tile:hover {
+  border-color: #c3c6ce;
+}
+.tile:has(input:checked) {
+  border-color: #0a6cff;
+  background: #eaf2ff;
+  box-shadow: inset 0 0 0 1px #0a6cff;
+}
+.tile:has(input:focus-visible) {
+  outline: 2px solid #0a6cff;
+  outline-offset: 2px;
+}
+.tile:has(input[aria-invalid="true"]) {
+  border-color: #d92d20;
+  background: #fffafa;
+}
+.tile span span {
+  color: #858c9b;
+  font-size: 13px;
+}
+.tile span span:first-child {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: #0a0d14;
+}
+
+/* Consent box */
+.consent {
+  padding: 0.95rem 1rem;
+  border-radius: 14px;
+  background: #f6f5f2;
+}
+.consent:has(input[aria-invalid="true"]) {
+  background: #fffafa;
+  box-shadow: inset 0 0 0 1px #d92d20;
+}
+.consent a {
+  font-weight: 500;
+  color: #0a6cff;
+  text-underline-offset: 3px;
+}
+.consent a:hover {
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .form *,
+  .tile {
+    transition: none !important;
+  }
+}

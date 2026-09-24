@@ -1,0 +1,56 @@
+/*
+ * Admin — "Premium Calm" (docs/spec/02-design-direction.md §7).
+ * Scoped to `.vg-admin` (set on the admin layouts), so the marketing site is
+ * untouched. Re-points the legacy theme tokens at the calm palette so any
+ * remaining legacy utility (bg-paper, border-line, text-muted…) stays on
+ * brand. Plain CSS: no Tailwind directives in here.
+ */
+.vg-admin {
+  --color-paper: #f6f5f2;
+  --color-line: #e8e8ec;
+  --color-line-strong: #d9dbe1;
+  --color-muted: #4b5263;
+  --color-subtle: #858c9b;
+  --color-ink: #0a0d14;
+  --color-ink-soft: #4b5263;
+  --color-accent: #0a6cff;
+  --color-accent-soft: #eaf2ff;
+  --color-accent-deep: #0a6cff;
+  --color-success: #0f7a3d;
+  --color-success-soft: #e7f7ee;
+  --color-warning: #b54708;
+  --color-warning-soft: #fff4e0;
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+
+  background-color: #f6f5f2;
+  color: #0a0d14;
+  font-feature-settings: "cv11", "ss01";
+}
+
+.vg-admin ::selection {
+  background: #d6e6ff;
+  color: #0a0d14;
+}
+
+.vg-admin .skeleton {
+  background: #efeee9;
+  background-image: none;
+  border-radius: 6px;
+  animation: vg-admin-pulse 1.4s ease-in-out infinite;
+}
+@keyframes vg-admin-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Thin scrollbars on the sidebar. */
+.vg-scroll-thin {
+  scrollbar-color: #e0e0e5 transparent;
+  scrollbar-width: thin;
+}

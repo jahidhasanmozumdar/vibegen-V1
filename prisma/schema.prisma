@@ -1,0 +1,534 @@
+// VibeGen Studio — PostgreSQL schema (Prisma ORM 7).
+//
+// Plain Postgres only: no Supabase Auth, RLS, storage or triggers, so the
+// database can live on Supabase, RDS, Neon or a VPS without changes.
+//
+// CONTRACT: field names are the SQL column names (snake_case) and mirror
+// lib/data/types.ts exactly, so rows round-trip through the generic DataStore
+// (lib/data/prisma-store.ts) without mapping. Enum-like columns are TEXT with
+// CHECK constraints, added in the migration SQL and kept in sync with the const
+// arrays in types.ts.
+//
+// The client is generated at install/build time into lib/generated/prisma
+// (git-ignored). Run `pnpm db:generate` after editing this file.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../lib/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// USERS & AUTH
+// =============================================================================
+
+model Profile {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email      String
+  full_name  String   @default("")
+  role       String   @default("staff")
+  avatar_url String?
+  active     Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  credential    AdminCredential?
+  reset_tokens  PasswordResetToken[]
+  owned_leads   Lead[]               @relation("LeadOwner")
+  notes         LeadNote[]
+  audits        AuditRequest[]       @relation("AuditAssignee")
+
+  @@unique([email])
+  @@map("profiles")
+}
+
+/// Password hash for a profile (scrypt). Kept apart from `profiles` so it is
+/// never selected by the generic store or listed in the admin.
+model AdminCredential {
+  profile_id    String   @id @db.Uuid
+  password_hash String
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@map("admin_credentials")
+}
+
+/// One-time password reset links. Only a SHA-256 hash of the token is stored.
+model PasswordResetToken {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id String    @db.Uuid
+  token_hash String    @unique
+  expires_at DateTime  @db.Timestamptz(6)
+  used_at    DateTime? @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@index([profile_id])
+  @@map("password_reset_tokens")
+}
+
+// =============================================================================
+// CRM
+// =============================================================================
+
+model Lead {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name        String
+  email            String
+  company          String?
+  website          String?
+  country          String?
+  industry         String?
+  business_type    String?
+  monthly_ad_spend String?
+  primary_platform String?
+  services         String[]  @default([])
+  challenge        String?
+  message          String?
+  status           String    @default("new")
+  owner_id         String?   @db.Uuid
+  tags             String[]  @default([])
+  source           String    @default("direct")
+  form             String    @default("manual")
+  attribution      Json?
+  last_activity_at DateTime  @default(now()) @db.Timestamptz(6)
+  is_demo          Boolean   @default(false)
+  deleted_at       DateTime? @db.Timestamptz(6)
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  owner      Profile?         @relation("LeadOwner", fields: [owner_id], references: [id], onDelete: SetNull)
+  notes      LeadNote[]
+  activities LeadActivity[]
+  audits     AuditRequest[]
+  messages   ContactMessage[]
+  bookings   Booking[]
+
+  @@index([status])
+  @@index([created_at(sort: Desc)])
+  @@index([email])
+  @@index([owner_id])
+  @@index([is_demo])
+  @@map("leads")
+}
+
+model LeadNote {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lead_id     String   @db.Uuid
+  author_id   String?  @db.Uuid
+  author_name String   @default("")
+  body        String
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  lead   Lead     @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  author Profile? @relation(fields: [author_id], references: [id], onDelete: SetNull)
+
+  @@index([lead_id, created_at(sort: Desc)])
+  @@map("lead_notes")
+}
+
+model LeadActivity {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lead_id     String   @db.Uuid
+  type        String
+  description String
+  actor_name  String?
+  meta        Json     @default("{}")
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  lead Lead @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  @@index([lead_id, created_at(sort: Desc)])
+  @@map("lead_activities")
+}
+
+model AuditRequest {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lead_id          String?   @db.Uuid
+  full_name        String
+  email            String
+  company          String?
+  website          String?
+  audit_type       String    @default("full_funnel")
+  status           String    @default("new")
+  priority         String    @default("medium")
+  assigned_to      String?   @db.Uuid
+  challenge        String?
+  primary_platform String?
+  monthly_ad_spend String?
+  services_needed  String[]  @default([])
+  summary          String?
+  notes            String?
+  completed_at     DateTime? @db.Timestamptz(6)
+  is_demo          Boolean   @default(false)
+  deleted_at       DateTime? @db.Timestamptz(6)
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  lead     Lead?          @relation(fields: [lead_id], references: [id], onDelete: SetNull)
+  assignee Profile?       @relation("AuditAssignee", fields: [assigned_to], references: [id], onDelete: SetNull)
+  findings AuditFinding[]
+
+  @@index([status])
+  @@index([created_at(sort: Desc)])
+  @@index([email])
+  @@index([lead_id])
+  @@index([assigned_to])
+  @@index([is_demo])
+  @@map("audit_requests")
+}
+
+model AuditFinding {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  audit_id       String   @db.Uuid
+  section        String
+  issue          String
+  impact         String
+  recommendation String
+  priority       String   @default("medium")
+  status         String   @default("open")
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  audit AuditRequest @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+
+  @@index([audit_id])
+  @@map("audit_findings")
+}
+
+model ContactMessage {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  email            String
+  company          String?
+  website          String?
+  country          String?
+  business_type    String?
+  monthly_ad_spend String?
+  services         String[]  @default([])
+  message          String
+  status           String    @default("unread")
+  note             String?
+  lead_id          String?   @db.Uuid
+  attribution      Json?
+  is_demo          Boolean   @default(false)
+  deleted_at       DateTime? @db.Timestamptz(6)
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  lead Lead? @relation(fields: [lead_id], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([created_at(sort: Desc)])
+  @@index([email])
+  @@index([lead_id])
+  @@index([is_demo])
+  @@map("contact_messages")
+}
+
+model Booking {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lead_id      String?   @db.Uuid
+  name         String
+  email        String
+  company      String?
+  meeting_at   DateTime? @db.Timestamptz(6)
+  meeting_type String    @default("strategy_call")
+  status       String    @default("scheduled")
+  source       String    @default("direct")
+  provider     String    @default("manual")
+  external_id  String?
+  notes        String?
+  is_demo      Boolean   @default(false)
+  deleted_at   DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  lead Lead? @relation(fields: [lead_id], references: [id], onDelete: SetNull)
+
+  /// Webhook idempotency: one row per provider booking (NULL external_id allowed many times).
+  @@unique([provider, external_id])
+  @@index([status])
+  @@index([created_at(sort: Desc)])
+  @@index([meeting_at])
+  @@index([email])
+  @@index([lead_id])
+  @@index([is_demo])
+  @@map("bookings")
+}
+
+// =============================================================================
+// CMS
+// =============================================================================
+
+model Testimonial {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  role       String?
+  company    String?
+  quote      String
+  photo_url  String?
+  status     String   @default("draft")
+  is_demo    Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  case_studies CaseStudy[]
+
+  @@index([status])
+  @@index([is_demo])
+  @@map("testimonials")
+}
+
+model CaseStudy {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title           String
+  slug            String    @unique
+  client          String
+  industry        String?
+  excerpt         String    @default("")
+  challenge       String    @default("")
+  strategy        String    @default("")
+  execution       String    @default("")
+  results         String    @default("")
+  metrics         Json      @default("[]")
+  services        String[]  @default([])
+  duration        String?
+  ad_spend        String?
+  images          String[]  @default([])
+  testimonial_id  String?   @db.Uuid
+  status          String    @default("draft")
+  published_at    DateTime? @db.Timestamptz(6)
+  seo_title       String?
+  seo_description String?
+  canonical_url   String?
+  og_title        String?
+  og_description  String?
+  og_image        String?
+  noindex         Boolean   @default(false)
+  is_demo         Boolean   @default(false)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  testimonial Testimonial? @relation(fields: [testimonial_id], references: [id], onDelete: SetNull)
+
+  @@index([status, published_at(sort: Desc)])
+  @@index([is_demo])
+  @@map("case_studies")
+}
+
+model Service {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug            String   @unique
+  name            String
+  tagline         String   @default("")
+  summary         String   @default("")
+  description     String   @default("")
+  capabilities    String[] @default([])
+  features        Json     @default("[]")
+  benefits        Json     @default("[]")
+  included        String[] @default([])
+  not_included    String[] @default([])
+  faqs            Json     @default("[]")
+  status          String   @default("draft")
+  sort_order      Int      @default(0)
+  seo_title       String?
+  seo_description String?
+  canonical_url   String?
+  og_title        String?
+  og_description  String?
+  og_image        String?
+  noindex         Boolean  @default(false)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@map("services")
+}
+
+model PricingPlan {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  slug           String   @unique
+  description    String   @default("")
+  monthly_price  Int      @default(0)
+  setup_fee      Int      @default(0)
+  currency       String   @default("USD")
+  ad_spend_range String   @default("")
+  features       String[] @default([])
+  cta_label      String   @default("")
+  cta_href       String   @default("")
+  badge          String?
+  sort_order     Int      @default(0)
+  active         Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([active, sort_order])
+  @@map("pricing_plans")
+}
+
+model Industry {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug            String   @unique
+  name            String
+  headline        String   @default("")
+  summary         String   @default("")
+  examples        String[] @default([])
+  focus           String[] @default([])
+  challenges      Json     @default("[]")
+  approach        Json     @default("[]")
+  services        String[] @default([])
+  faqs            Json     @default("[]")
+  status          String   @default("draft")
+  sort_order      Int      @default(0)
+  seo_title       String?
+  seo_description String?
+  canonical_url   String?
+  og_title        String?
+  og_description  String?
+  og_image        String?
+  noindex         Boolean  @default(false)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@map("industries")
+}
+
+model BlogCategory {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  slug        String   @unique
+  description String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  posts BlogPost[]
+
+  @@map("blog_categories")
+}
+
+model BlogPost {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title           String
+  slug            String    @unique
+  excerpt         String    @default("")
+  content         String    @default("")
+  featured_image  String?
+  author          String    @default("")
+  category_id     String?   @db.Uuid
+  tags            String[]  @default([])
+  status          String    @default("draft")
+  published_at    DateTime? @db.Timestamptz(6)
+  reading_minutes Int       @default(1)
+  seo_title       String?
+  seo_description String?
+  canonical_url   String?
+  og_title        String?
+  og_description  String?
+  og_image        String?
+  noindex         Boolean   @default(false)
+  is_demo         Boolean   @default(false)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  category BlogCategory? @relation(fields: [category_id], references: [id], onDelete: SetNull)
+
+  @@index([status, published_at(sort: Desc)])
+  @@index([category_id])
+  @@index([is_demo])
+  @@map("blog_posts")
+}
+
+model Media {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  path       String
+  url        String
+  alt        String?
+  mime_type  String
+  size_bytes Int      @default(0)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([created_at(sort: Desc)])
+  @@map("media")
+}
+
+// =============================================================================
+// TRACKING, SETTINGS, NOTIFICATIONS
+// =============================================================================
+
+model UtmSession {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  session_id   String
+  utm_source   String?
+  utm_medium   String?
+  utm_campaign String?
+  utm_term     String?
+  utm_content  String?
+  referrer     String?
+  landing_page String?
+  device       String?
+  country      String?
+  is_demo      Boolean  @default(false)
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([session_id])
+  @@index([created_at(sort: Desc)])
+  @@index([is_demo])
+  @@map("utm_sessions")
+}
+
+model AnalyticsEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  path       String?
+  source     String   @default("direct")
+  session_id String?
+  properties Json     @default("{}")
+  is_demo    Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([created_at(sort: Desc)])
+  @@index([name, created_at(sort: Desc)])
+  @@index([is_demo])
+  @@map("analytics_events")
+}
+
+/// One row, key 'site', value = SiteSettings JSON. PUBLIC IDs ONLY — never secrets.
+model SiteSetting {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key        String   @unique
+  value      Json     @default("{}")
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@map("site_settings")
+}
+
+model Notification {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type       String
+  title      String
+  body       String    @default("")
+  link       String?
+  read_at    DateTime? @db.Timestamptz(6)
+  is_demo    Boolean   @default(false)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([created_at(sort: Desc)])
+  @@index([is_demo])
+  @@map("notifications")
+}
